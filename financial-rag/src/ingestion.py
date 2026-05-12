@@ -132,7 +132,7 @@ def slugify_company_name(company_name) -> str:
     normalized = re.sub(r"[^a-z0-9]+", "_", normalized)
     return normalized.strip("_")
 
-def infer_quarter_from_report_periode(report_period:str| None) -> int| None:
+def infer_quarter_from_report_period(report_period:str| None) -> int| None:
     if not report_period or re.fullmatch(r"\d{8}", report_period):
         return None
     month = report_period[4:6]
@@ -155,6 +155,46 @@ def build_output_pdf_path(
     quarter_suffix = f"_q{quarter}" if filing_type == QUARTERLY_FILING_TYPE and quarter else ""
     filename = f"{company_slug}_{filing_type}_{fiscal_year}{quarter_suffix}.pdf"
     return raw_dir / filename
+
+def parse_sec_header_value(full_submission_text:str, header_name:str) -> str | None:
+    pattern = rf"^\s*{re.escape(header_name)}:\s*(?P<value>.+?)\s*$"
+    match = re.search(pattern, full_submission_text, flags= re.MULTILINE)
+    return match.group("value") if match else None
+
+def read_full_submission_text(filing_directory: Path) -> str:
+    full_submission_path = filing_directory / "full-submission.txt"
+    if not full_submission_path.exists():
+        raise FileNotFoundError(f"Missing SEC full submission file: {full_submission_path}")
+    return full_submission_path.read_text(encoding="utf-8", errors="replace")
+
+def extract_metadata(
+        filing_directory: Path,
+        company: Company,
+        filing_type: str,
+) -> FilingMetadata:
+    
+    full_submission_text = read_full_submission_text(filing_directory)
+    report_period = parse_sec_header_value(full_submission_text,"CONFORMED PERIOD OF REPORT")
+    filing_date = parse_sec_header_value(full_submission_text,"FILED AS OF DATE")
+    accesion_number = parse_sec_header_value(full_submission_text,"ACCESSION NUMBER")
+    fiscal_year = infer_fiscal_year(report_period=report_period, filing_date=filing_date)
+    quarter = (
+        infer_quarter_from_report_period(report_period)
+        if filing_type == QUARTERLY_FILING_TYPE
+        else None
+    )
+    return FilingMetadata(
+        company_name = company.name,
+        ticker = company.ticker,
+        filing_type = filing_type,
+        fiscal_year = fiscal_year,
+        quarter = quarter,
+        filing_date = filing_date,
+        report_period = report_period,
+        accesion_number = accesion_number,
+    )  
+
+    
 
 
 
