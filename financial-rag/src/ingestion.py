@@ -280,7 +280,7 @@ def process_downloaded_filings(
     company: Company,
     filing_type: str,
     limit: int,
-):
+) -> IngestedFiling:
     filing_directories = list_downloaded_filing_directories(
         config,
         company,
@@ -312,17 +312,92 @@ def process_downloaded_filings(
             quarter=metadata.quarter,
         )
 
+        if output_pdf_path.exists() and not config.overwrite_existing_pdfs:
+            LOGGER.info("Keeping existing PDF: %s", output_pdf_path)
+            primary_document_path = find_primary_document(filing_directory)
+        else:
+            primary_document_path = find_primary_document(filing_directory)
+            LOGGER.info("Converting %s to %s.", primary_document_path.name, output_pdf_path.name)
+            convert_document_to_pdf(primary_document_path, output_pdf_path)
+
         ingested_filings.append(
             IngestedFiling(
                 source_directory =filing_directory,
-                primary_document_path =,
+                primary_document_path =primary_document_path,
                 output_pdf_path =output_pdf_path,
                 metadata = metadata,
             )
         )
     return ingested_filings
 
+def ingest_company(
+    downloader: Downloader,
+    config: IngestionConfig,
+    company: Company,
+) -> list[IngestedFiling]:
+
+    download_filing_type(
+        downloader=downloader,
+        company=company,
+        filing_type=ANNUAL_FILING_TYPE,
+        limit= config.annual_limt
+    )
+
+    download_filing_type(
+        downloader=downloader,
+        company=company,
+        filing_type=QUARTERLY_FILING_TYPE,
+        limit= config.annual_limt
+    )
+
+    annual_filings = process_downloaded_filings(
+        config=config,
+        company=company,
+        filing_type=ANNUAL_FILING_TYPE,
+        limit=config.annual_limit,
+    )
+    quarterly_filings = process_downloaded_filings(
+        config=config,
+        company=company,
+        filing_type=ANNUAL_FILING_TYPE,
+        limit=config.annual_limit,
+    )
+
+    return [*annual_filings ,*quarterly_filings]
+
+def cleanup_sec_cache(config:IngestionConfig) -> None:
+    if config.keep_sec_cache:
+        return 
+    if config.sec_cache_dir.exists():
+        shutil.rmtree(config.sec_cache_dir)
+
+def run_ingestion(
+        companies: Iterable[Company] = DEFAULT_COMPANIES,
+        config: IngestionConfig = IngestionConfig,
+) -> list[IngestedFiling]:
     
+    active_config = config or build_config_from_environment()
+    downloader = create_downloader(active_config)
+
+    all_ingested_filings: list[IngestedFiling] = []
+    for company in companies:
+        LOGGER.info("Starting ingestion for %s (%s).", company.name, company.ticker)
+        company_filings = ingest_company(downloader, active_config, company)
+        all_ingested_filings.extend(company_filings)
+        time.sleep(SECONDS_BETWEEN_COMPANY_REQUESTS)
+    
+    cleanup_sec_cache(active_config)
+    LOGGER.info("Finished ingestion. Created or found %s PDFs.", len(all_ingested_filings))
+    return all_ingested_filings
+
+def main() -> None:
+    configure_logging()
+    run_ingestion()
+
+
+if __name__ == "__main__":
+    main()
+
 
     
 
