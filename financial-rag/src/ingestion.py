@@ -194,6 +194,73 @@ def extract_metadata(
         accesion_number = accesion_number,
     )  
 
+def find_company_filing_root(config:IngestionConfig, company:Company, filing_type:str) -> Path:
+    return config.sec_cache_dir / "sec-edgar-filings" / company.name / filing_type
+
+def list_downloaded_filing_directories(config:IngestionConfig, company:Company, filing_type:str) -> list[Path]:
+    filing_root = find_company_filing_root(config, company, filing_type)
+    if not filing_root.exists():
+        return []
+    
+    return sorted(path for path in filing_root.iterdir() if path.is_dir() )
+
+def sor_filing_directories_by_report_date(
+        filing_directories: Iterable[Path],
+        company: Company,
+        filing_type: str
+):
+    sortable_directories: list[tuple[str, Path]] = []
+    for filing_directory in filing_directories:
+        try:
+            metadata = extract_metadata(filing_directory, company, filing_type)
+        except (FileNotFoundError, ValueError) as exc:
+            LOGGER.warning("Skipping %s because metadata could not be read: %s", filing_directory, exc)
+            continue
+        data_key = metadata.report_period or metadata.filing_date
+        sortable_directories.append((data_key,filing_directory))
+        return [path for _, path in sorted(sortable_directories, reverse = True)]
+    
+def find_primary_document(filing_directory: Path) -> Path:
+    preferred_names= (
+        "primary-document.html",
+        "primary-document.htm",
+        "primary-document.txt",
+    )
+    for filename in preferred_names:
+        candidate = filing_directory / filename
+        if candidate.exists():
+            return candidate
+    
+    html_candidate = sorted(
+        path
+        for path in filing_directory.iterdir()
+        if path.is_file() and path.suffix.lower() in {".html",".htm",".txt"}
+    )
+
+    if not html_candidate:
+        raise FileNotFoundError(f"No primary HTML/TXT filing document found in {filing_directory}")
+    
+    return html_candidate[0]
+
+def convert_document_to_pdf(source_path: Path, output_pdf_path: Path):
+    from weasyprint import HTML
+    output_pdf_path.mkdir(parents=True, exist_ok=True)
+
+    if source_path.suffix.lower() == '.txt':
+        text = source_path.read_text(encoding="utf-8", errors="replace")
+        html_string = "<html><body><pre>{text}</pre></body></html>"
+        HTML(string = html_string, base_url=str(source_path.parent)).write_pdf(str(output_pdf_path))
+    else:
+        HTML(filename=str(source_path), base_url=str(source_path.parent)).write_pdf(str(output_pdf_path))
+    validate_pdf(output_pdf_path)
+
+def validate_pdf(pdf_path: Path):
+    if not pdf_path.exists():
+        raise FileNotFoundError(f"Expected PDF was not created: {pdf_path}")
+    if pdf_path.stat().st_size < MINIMUM_VALID_PDF_BYTES:
+        raise ValueError(f"Generated PDF appears too small to be valid: {pdf_path}")
+
+
     
 
 
