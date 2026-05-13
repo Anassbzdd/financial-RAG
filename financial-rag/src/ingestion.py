@@ -204,7 +204,7 @@ def list_downloaded_filing_directories(config:IngestionConfig, company:Company, 
     
     return sorted(path for path in filing_root.iterdir() if path.is_dir() )
 
-def sor_filing_directories_by_report_date(
+def sort_filing_directories_by_report_date(
         filing_directories: Iterable[Path],
         company: Company,
         filing_type: str
@@ -260,6 +260,69 @@ def validate_pdf(pdf_path: Path):
     if pdf_path.stat().st_size < MINIMUM_VALID_PDF_BYTES:
         raise ValueError(f"Generated PDF appears too small to be valid: {pdf_path}")
 
+def download_filing_type(
+        downloader: Downloader,
+        company: Company,
+        limit: int,
+        filing_type: str,
+):
+    LOGGER.info("Downloading latest %s %s filing(s) for %s.", limit, filing_type, company.name)
+    try:
+        downloader.get(filing_type,company.edgar_identifier, limit=limit)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to download {filing_type} filings for {company.name} "
+            f"({company.edgar_identifier})."
+        ) from exc
+    
+def process_downloaded_filings(
+    config: IngestionConfig,
+    company: Company,
+    filing_type: str,
+    limit: int,
+):
+    filing_directories = list_downloaded_filing_directories(
+        config,
+        company,
+        filing_type,
+    )
+    newest_directories = sort_filing_directories_by_report_date(
+        filing_directories,
+        company,
+        filing_type,
+    )[:limit]
+
+    if len(newest_directories) < limit:
+        LOGGER.warning(
+            "Expected %s %s filings for %s but found %s.",
+            limit,
+            filing_type,
+            company.name,
+            len(newest_directories),
+        )
+    
+    ingested_filings: list[IngestedFiling] = []
+    for filing_directory in newest_directories:
+        metadata = extract_metadata(filing_directory, company, filing_type)
+        output_pdf_path = build_output_pdf_path(
+            raw_dir=config.raw_dir,
+            company=company,
+            filing_type=filing_type,
+            fiscal_year=metadata.fiscal_year,
+            quarter=metadata.quarter,
+        )
+
+        ingested_filings.append(
+            IngestedFiling(
+                source_directory =filing_directory,
+                primary_document_path =,
+                output_pdf_path =output_pdf_path,
+                metadata = metadata,
+            )
+        )
+    return ingested_filings
+
+    
 
     
 
