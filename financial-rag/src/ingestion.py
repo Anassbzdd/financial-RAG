@@ -40,7 +40,7 @@ class FilingMetadata:
     quarter: int | None
     filing_date: str | None
     report_period: str | None
-    accesion_number: str | None
+    accession_number: str | None
 
 @dataclass(frozen=True)
 class IngestedFiling:
@@ -123,8 +123,8 @@ def create_downloader(config:IngestionConfig):
     ensure_directories(config)
     return Downloader(
         config.downloader_company_name,
-        config.downloader_email,
-        config.sec_cache_dir,
+        config.downloader_email or "",
+        str(config.sec_cache_dir),
     )
 
 def slugify_company_name(company_name) -> str:
@@ -133,20 +133,23 @@ def slugify_company_name(company_name) -> str:
     return normalized.strip("_")
 
 def infer_quarter_from_report_period(report_period:str| None) -> int| None:
-    if not report_period or re.fullmatch(r"\d{8}", report_period):
+    if report_period is None or not re.fullmatch(r"\d{8}", report_period):
         return None
-    month = report_period[4:6]
+    month = int(report_period[4:6])
     return ((month - 1) // 3) + 1
 
 def infer_fiscal_year(report_period:str|None, filing_date:str|None):
     candidate_date = report_period or filing_date
-    if not candidate_date or re.fullmatch(r"\d{8}", report_period):
-        return None
+    if candidate_date is None or not re.fullmatch(r"\d{8}", candidate_date):
+        raise ValueError(
+        "Cannot infer fiscal year: both report_period and filing_date "
+        "are missing or malformed."
+        )
     return int(candidate_date[:4])
 
 def build_output_pdf_path(
     raw_dir: Path,
-    company: str,
+    company: Company,
     filing_type:str,
     fiscal_year:int,
     quarter:int | None,
@@ -176,7 +179,7 @@ def extract_metadata(
     full_submission_text = read_full_submission_text(filing_directory)
     report_period = parse_sec_header_value(full_submission_text,"CONFORMED PERIOD OF REPORT")
     filing_date = parse_sec_header_value(full_submission_text,"FILED AS OF DATE")
-    accesion_number = parse_sec_header_value(full_submission_text,"ACCESSION NUMBER")
+    accession_number = parse_sec_header_value(full_submission_text,"ACCESSION NUMBER")
     fiscal_year = infer_fiscal_year(report_period=report_period, filing_date=filing_date)
     quarter = (
         infer_quarter_from_report_period(report_period)
@@ -191,11 +194,11 @@ def extract_metadata(
         quarter = quarter,
         filing_date = filing_date,
         report_period = report_period,
-        accesion_number = accesion_number,
+        accession_number = accession_number,
     )  
 
 def find_company_filing_root(config:IngestionConfig, company:Company, filing_type:str) -> Path:
-    return config.sec_cache_dir / "sec-edgar-filings" / company.name / filing_type
+    return config.sec_cache_dir / "sec-edgar-filings" / company.edgar_identifier / filing_type
 
 def list_downloaded_filing_directories(config:IngestionConfig, company:Company, filing_type:str) -> list[Path]:
     filing_root = find_company_filing_root(config, company, filing_type)
@@ -216,9 +219,9 @@ def sort_filing_directories_by_report_date(
         except (FileNotFoundError, ValueError) as exc:
             LOGGER.warning("Skipping %s because metadata could not be read: %s", filing_directory, exc)
             continue
-        data_key = metadata.report_period or metadata.filing_date
+        data_key = metadata.report_period or metadata.filing_date or "00000000"
         sortable_directories.append((data_key,filing_directory))
-        return [path for _, path in sorted(sortable_directories, reverse = True)]
+    return [path for _, path in sorted(sortable_directories, reverse = True)]
     
 def find_primary_document(filing_directory: Path) -> Path:
     preferred_names= (
@@ -244,11 +247,11 @@ def find_primary_document(filing_directory: Path) -> Path:
 
 def convert_document_to_pdf(source_path: Path, output_pdf_path: Path):
     from weasyprint import HTML
-    output_pdf_path.mkdir(parents=True, exist_ok=True)
+    output_pdf_path.parent.mkdir(parents=True, exist_ok=True)
 
     if source_path.suffix.lower() == '.txt':
         text = source_path.read_text(encoding="utf-8", errors="replace")
-        html_string = "<html><body><pre>{text}</pre></body></html>"
+        html_string = f"<html><body><pre>{escape(text)}</pre></body></html>"
         HTML(string = html_string, base_url=str(source_path.parent)).write_pdf(str(output_pdf_path))
     else:
         HTML(filename=str(source_path), base_url=str(source_path.parent)).write_pdf(str(output_pdf_path))
@@ -280,7 +283,7 @@ def process_downloaded_filings(
     company: Company,
     filing_type: str,
     limit: int,
-) -> IngestedFiling:
+) -> list[IngestedFiling]:
     filing_directories = list_downloaded_filing_directories(
         config,
         company,
@@ -340,14 +343,14 @@ def ingest_company(
         downloader=downloader,
         company=company,
         filing_type=ANNUAL_FILING_TYPE,
-        limit= config.annual_limt
+        limit= config.annual_limit
     )
 
     download_filing_type(
         downloader=downloader,
         company=company,
         filing_type=QUARTERLY_FILING_TYPE,
-        limit= config.annual_limt
+        limit= config.quarterly_limit
     )
 
     annual_filings = process_downloaded_filings(
@@ -359,8 +362,8 @@ def ingest_company(
     quarterly_filings = process_downloaded_filings(
         config=config,
         company=company,
-        filing_type=ANNUAL_FILING_TYPE,
-        limit=config.annual_limit,
+        filing_type=QUARTERLY_FILING_TYPE,
+        limit=config.quarterly_limit,
     )
 
     return [*annual_filings ,*quarterly_filings]
@@ -373,7 +376,7 @@ def cleanup_sec_cache(config:IngestionConfig) -> None:
 
 def run_ingestion(
         companies: Iterable[Company] = DEFAULT_COMPANIES,
-        config: IngestionConfig = IngestionConfig,
+        config: IngestionConfig | None = None,
 ) -> list[IngestedFiling]:
     
     active_config = config or build_config_from_environment()
@@ -397,9 +400,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
-    
-
-
-
