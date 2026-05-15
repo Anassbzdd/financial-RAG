@@ -94,3 +94,64 @@ def create_llama_parser(config:ParserConfig):
         parsing_instruction= config.parsing_instruction,
         verbose= True,
     )
+
+def validate_ingested_filing(filing: IngestedFiling) -> None:
+    if not filing.output_pdf_path.exists():
+        raise FileNotFoundError(f"Missing PDF for parsing: {filing.output_pdf_path}")
+    
+    if filing.output_pdf_path.suffix() != ".pdf":
+        raise ValueError(f"Expected a PDF file, got: {filing.output_pdf_path}")
+    
+def filing_metadata_to_dict(filing: IngestedFiling) -> dict[str,Any]:
+    return asdict(filing.metadata)
+
+def build_document_id(filing: IngestedFiling) -> str:
+    accession = filing.metadata.accession_number 
+    if accession:
+        return accession.replace("-", "")
+    return filing.output_pdf_path.stem
+
+def build_output_json_path(config: ParserConfig,filing: IngestedFiling) -> Path:
+    id = build_document_id(filing)
+    return config.parsed_dir / f"{id}.json"
+
+def extract_document_text(document: Any) -> str:
+    if hasattr(document, "text") and isinstance(document.text, str):
+        return document.text
+    
+    if hasattr(document,"get_content"):
+        content = document.get_content()
+        return content if isinstance(content,str) else str(content)
+    
+def extract_document_metadata(document: Any) -> dict[str, Any]:
+    metadata = getattr(document, "metadata", {})
+    return metadata if isinstance(metadata) else {}
+
+def normalize_markdown(markdown_text:str) -> str:
+    normalized = markdown_text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = [line.rstrip() for line in normalized.split("\n")]
+    return "\n".join(lines).strip()
+
+def extract_page_number(llama_metadata: dict[str, Any], fallback_index:int) -> int:
+    for key in ("page_number", "page_label", "page"):
+        value = llama_metadata.get(key)
+        if value is not None:
+            return int(value)
+        
+    return fallback_index + DEFAULT_PAGE_NUMBER_START
+
+def build_section_metadata(
+    filing_metadata: dict[str, Any],
+    llama_metadata: dict[str, Any],
+    page_number: int,
+) -> dict[str,Any]:
+    return {
+        **filing_metadata,
+        "llama_metadata": dict[str, Any],
+        "page_number": page_number
+    }
+
+def convert_llama_documents_to_sections(
+    documents: Iterable[Any]
+    filing_metadata: dict[str,Any]
+):
