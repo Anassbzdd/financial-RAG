@@ -40,13 +40,13 @@ class ParsedSection:
     metadata: dict[str, Any]
 
 @dataclass(frozen=True)
-class ParserFiling:
+class ParsedFiling:
 
     document_id: str
     source_pdf_path: Path
     output_json_path: Path
     metadata: dict[str, Any]
-    setions: list[ParsedSection]
+    sections: list[ParsedSection]
     parsed_at_utc: str
 
 def load_dotenv_if_available() -> None:
@@ -63,7 +63,7 @@ def build_config_from_environment() -> ParserConfig:
     return ParserConfig(llama_parse_api_key= api_key)
 
 def validate_config(config:ParserConfig) -> None:
-    if config.llama_parse_api_key or config.llama_parse_api_key.strip():
+    if config.llama_parse_api_key is None or not config.llama_parse_api_key.strip():
         raise ValueError(
             "LLAMA_CLOUD_API_KEY is required. Add it to .env before parsing PDFs."
         )
@@ -99,7 +99,7 @@ def validate_ingested_filing(filing: IngestedFiling) -> None:
     if not filing.output_pdf_path.exists():
         raise FileNotFoundError(f"Missing PDF for parsing: {filing.output_pdf_path}")
     
-    if filing.output_pdf_path.suffix() != ".pdf":
+    if filing.output_pdf_path.suffix != ".pdf":
         raise ValueError(f"Expected a PDF file, got: {filing.output_pdf_path}")
     
 def filing_metadata_to_dict(filing: IngestedFiling) -> dict[str,Any]:
@@ -112,8 +112,8 @@ def build_document_id(filing: IngestedFiling) -> str:
     return filing.output_pdf_path.stem
 
 def build_output_json_path(config: ParserConfig,filing: IngestedFiling) -> Path:
-    id = build_document_id(filing)
-    return config.parsed_dir / f"{id}.json"
+    document_id = build_document_id(filing)
+    return config.parsed_dir / f"{document_id}.json"
 
 def extract_document_text(document: Any) -> str:
     if hasattr(document, "text") and isinstance(document.text, str):
@@ -123,9 +123,11 @@ def extract_document_text(document: Any) -> str:
         content = document.get_content()
         return content if isinstance(content,str) else str(content)
     
+    return str(document)
+    
 def extract_document_metadata(document: Any) -> dict[str, Any]:
     metadata = getattr(document, "metadata", {})
-    return metadata if isinstance(metadata) else {}
+    return metadata if isinstance(metadata,dict) else {}
 
 def normalize_markdown(markdown_text:str) -> str:
     normalized = markdown_text.replace("\r\n", "\n").replace("\r", "\n")
@@ -147,11 +149,91 @@ def build_section_metadata(
 ) -> dict[str,Any]:
     return {
         **filing_metadata,
-        "llama_metadata": dict[str, Any],
+        "llama_metadata": llama_metadata,
         "page_number": page_number
     }
 
 def convert_llama_documents_to_sections(
-    documents: Iterable[Any]
-    filing_metadata: dict[str,Any]
-):
+    documents: Iterable[Any],
+    filing_metadata: dict[str,Any],
+) -> list[ParsedSection]:
+    sections: list[ParsedSection] = []
+    for index, document in enumerate(documents):
+        llama_metadata = extract_document_metadata(document)
+        page_number = extract_page_number(llama_metadata, index)
+        text = normalize_markdown(extract_document_text(document))
+        metadata = build_section_metadata(filing_metadata, llama_metadata, page_number)
+        if text:
+            sections.append(ParsedSection(page_number, text, metadata))
+    return sections
+
+def parse_pdf_with_llamaparse(parser:Any, filing: IngestedFiling) -> list[Any]:
+    try:
+        documents = parser.load_data(str(filing.output_pdf_path))
+    except Exception as exc:
+        raise RuntimeError(f"LlamaParse failed for {filing.output_pdf_path}") from exc
+    
+    if not documents:
+        raise ValueError(f"LlamaParse returned no content for {filing.output_pdf_path}")
+
+    return list(documents)
+
+def parsed_filing_to_dict(parsed_filing:ParsedFiling) -> dict[str, Any]:
+
+    return {
+        "document_id": parsed_filing.document_id,
+        "source_pdf_path": str(parsed_filing.source_pdf_path),
+        "output_json_path": parsed_filing.output_json_path,
+        "metadata": parsed_filing.metadata,
+        "sections": [asdict(section) for section in parsed_filing.sections],
+        "parsed_at_utc": parsed_filing.parsed_at_utc,
+    }
+
+def save_parsed_filing(parsed_filing: ParsedFiling) -> None:
+    try:
+        parsed_filing.output_json_path.write_text(
+            json.dumps(parsed_filing_to_dict(parsed_filing), indent= JSON_INDENT_SPACES),
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        raise OSError(f"Could not write parsed JSON: {parsed_filing.output_json_path}") from exc
+    
+def parse_filing(parser: Any, config: ParserConfig, filing: IngestedFiling) -> ParsedFiling:
+    validate_ingested_filing(filing)
+    filing_metadata = filing_metadata_to_dict(filing)
+    documents = parse_pdf_with_llamaparse(parser, filing)
+    sections = convert_llama_documents_to_sections(documents, filing_metadata)
+    if not sections:
+        raise ValueError(f"No non-empty markdown sections found for {filing.output_pdf_path}")
+
+    parsed_filing = ParsedFiling(
+        document_id =build_document_id(filing),
+        source_pdf_path =filing.output_pdf_path,
+        output_json_path =build_output_json_path(config, filing),
+        metadata =filing_metadata,
+        sections =sections,
+        parsed_at_utc =datetime.now(timezone.utc).isoformat(),
+    )
+    save_parsed_filing(parsed_filing)
+    return parsed_filing
+
+def parse_filings(
+        filings: Iterable[IngestedFiling],
+        config: ParserConfig | None = None,
+) -> list[ParsedFiling]:
+    
+    active_config = config or build_config_from_environment()
+    ensure_parsed_dir(active_config)
+    parser = create_llama_parser(active_config)
+    parsed_filings: list[ParsedFiling] = []
+
+    for filing in filings:
+        try:
+            parsed_filings.append(parse_filing(parser, active_config, filing))
+            LOGGER.info("Parsed %s.", filing.output_pdf_path.name)
+        except Exception as exc:
+            if not active_config.continue_on_error:
+                raise
+            LOGGER.exception("Skipping %s after parse failure: %s", filing.output_pdf_path, exc)
+
+    return parsed_filings
