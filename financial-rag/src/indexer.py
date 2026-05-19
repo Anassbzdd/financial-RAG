@@ -88,5 +88,54 @@ def save_pickle(payload:Any, path:Path) -> None:
             pickle.dump(payload, file)
     except OSError as exc:
         raise OSError(f"Could not save pickle artifact: {path}") from exc
+    
+def sanitize_metadata(metadata: dict[str,Any]):
+    clean:dict[str, str | int | float | bool] = {}
+    for key , value in metadata.items():
+        if value is None:
+            clean[key] = ""
+        elif isinstance(value,(str, int , float , bool)):
+            clean[key] = value
+        else:
+            clean[key] = str(value)
+    
+    return clean
 
+def create_chroma_collection(config: IndexerConfig) -> Any:
+    try:
+        import chromadb
+        client = chromadb.PersistentClient(path=str(config.chroma_dir))
+        if config.rebuild_chroma:
+            try_delete_collection(client, config.collection_name)
+        return client.get_or_create_collection(name=config.collection_name)
+    except Exception as exc:
+        raise RuntimeError("Could not initialize ChromaDB persistent collection.") from exc
+    
+def try_delete_collection(client, collection_name):
+    try:
+        client.delete_collection(name=collection_name)
+    except Exception:
+        LOGGER.debug("No existing Chroma collection named %s to delete.", collection_name)
 
+def add_chunks_to_chroma(collection:Any, chunks:list[TextChunk], records: list[EmbeddingRecord]) -> None:
+    embedding_by_id = {record.chunk_id : record.embedding for record in records}
+    for batch in iter_batches(chunks, EMBEDDING_BATCH_SIZE):
+        try:
+            collection.upsert(
+                ids= [chunk.chunk_id for chunk in batch],
+                documents= [chunk.text for chunk in batch],
+                embeddings= [embedding_by_id[chunk.chunk_id] for chunk in batch],
+                metadatas = [sanitize_metadata(chunk.metadata) for chunk in batch],
+            )
+        except Exception as exc:
+            raise RuntimeError("Failed while writing chunks to ChromaDB.") from exc
+        
+def tokenize(text: str) -> list[str]:
+    return TOKEN_PATTERN.findall(text.lower())
+
+def build_bm25_index(chunks: list[TextChunk]) -> Any:
+    try:
+        from rank_bm25 import BM250kapi
+        return BM250kapi([tokenize(chunk.text) for chunk in chunks])
+    except Exception as exc:
+        raise RuntimeError("Could not build BM25 index.") from exc
