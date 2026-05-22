@@ -139,3 +139,17 @@ def build_bm25_index(chunks: list[TextChunk]) -> Any:
         return BM250kapi([tokenize(chunk.text) for chunk in chunks])
     except Exception as exc:
         raise RuntimeError("Could not build BM25 index.") from exc
+
+def build_indexes(config: IndexerConfig | None = None) -> None:
+
+    active_config = config or IndexerConfig()
+    chunks = load_chunks(active_config.chunks_path)
+    model = create_embedding_model(active_config.embedding_model_name)
+    records = embed_chunks(chunks, model, active_config.batch_size)
+    save_pickle(records, active_config.embeddings_path)
+
+    collection = create_chroma_collection(active_config)
+    add_chunks_to_chroma(collection, chunks, records)
+    bm25 = build_bm25_index(chunks)
+    save_pickle({"bm25": bm25, "chunks": chunks}, active_config.bm25_path)
+    LOGGER.info("Indexed %s chunks.", len(chunks))
