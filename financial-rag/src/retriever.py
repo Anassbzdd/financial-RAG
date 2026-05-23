@@ -141,3 +141,29 @@ class FinancialRetriever:
             if len(results) >= BM25_TOP_K:
                 break
         return results
+    
+    def retrieve(self,query: str, company_name: str| None , filing_type: str| None) -> list[RetrievalResult]:
+        if not query.strip():
+            raise ValueError("query must not be empty.")
+        vector_results , bm25_results = self._run_parallel_searches(query, company_name, filing_type)
+        fused_results = reciprocal_rank_fusion(vector_results, bm25_results)
+        return self.rerank(query, fused_results[:RERANK_INPUT_K])[:FINAL_TOP_K]
+    
+    def _run_parallel_searches(self,query: str, company_name: str| None , filing_type: str| None) -> list[RetrievalResult]:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            vector_future = executor.submit(self.vector_search, query, company_name, filing_type)
+            bm25_future = executor.submit(self.bm25_search, query, company_name, filing_type)
+            return vector_future.result(), bm25_future.result()
+    
+    def rerank(self, query:str, candidates: list[RetrievalResult]) -> list[RetrievalResult]:
+        if not candidates:
+            return []
+        try:
+            scores = self.rerank.predict([(query, candidate.text) for candidate in candidates])
+        except Exception as exc:
+            raise RuntimeError("Cross-encoder reranking failed.") from exc
+        for candidate, score in zip(candidates, scores):
+            candidate.rerank_score = float(score)
+        return sorted(candidate, key=lambda i : i.rerank_score, reverse=True)
+    
+
