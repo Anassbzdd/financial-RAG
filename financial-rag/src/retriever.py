@@ -26,7 +26,7 @@ class RetrieverConfig:
     chunks_path: Path = DEFAULT_CHUNKS_PATH
     bm25_path: Path = DEFAULT_BM25_PATH
     chroma_dir: Path = DEFAULT_CHROMA_DIR
-    collection_name: Path = COLLECTION_NAME
+    collection_name: str = COLLECTION_NAME
     embedding_model_name: str = EMBEDDING_MODEL_NAME
     reranker_model_name: str = RERANKER_MODEL_NAME
 
@@ -56,8 +56,8 @@ def create_embedding_model(model_name:str) -> Any:
     
 def create_reranker(model_name: str) -> Any:
     try:
-        from sentence_transformers import SentenceTransformer
-        return SentenceTransformer(model_name)
+        from sentence_transformers import CrossEncoder
+        return CrossEncoder(model_name)
     except Exception as exc:
         raise RuntimeError(f"Could not load reranker model: {model_name}") from exc  
     
@@ -65,7 +65,7 @@ def create_chroma_collection(config:RetrieverConfig):
     try:
         import chromadb 
         client = chromadb.PersistentClient(path=str(config.chroma_dir))
-        client.get_collection(name= config.collection_name)
+        return client.get_collection(name= config.collection_name)
     except Exception as exc:
         raise RuntimeError("Could not open ChromaDB collection.") from exc
     
@@ -81,14 +81,14 @@ def metadata_matches_filters(
     filing_ok = filing_type is None or metadata.get("filing_type") == filing_type
     return company_ok and filing_ok
 
-def build_chroma_where(comapny_name: str, filing_type:str) -> dict[str, Any]:
+def build_chroma_where(company_name: str, filing_type:str) -> dict[str, Any]:
     clauses: list[dict[str,str]] = []
-    if comapny_name:
-        clauses.append({"company_name": comapny_name})
+    if company_name:
+        clauses.append({"company_name": company_name})
     if filing_type:
         clauses.append({"filing_type": filing_type})
     if len(clauses) == 1:
-        clauses[0]
+        return clauses[0]
     return {"$and": clauses} if clauses else None
 
 class FinancialRetriever:
@@ -142,14 +142,14 @@ class FinancialRetriever:
                 break
         return results
     
-    def retrieve(self,query: str, company_name: str| None , filing_type: str| None) -> list[RetrievalResult]:
+    def retrieve(self,query: str, company_name: str| None = None, filing_type: str| None = None) -> list[RetrievalResult]:
         if not query.strip():
             raise ValueError("query must not be empty.")
         vector_results , bm25_results = self._run_parallel_searches(query, company_name, filing_type)
         fused_results = reciprocal_rank_fusion(vector_results, bm25_results)
         return self.rerank(query, fused_results[:RERANK_INPUT_K])[:FINAL_TOP_K]
     
-    def _run_parallel_searches(self,query: str, company_name: str| None , filing_type: str| None) -> list[RetrievalResult]:
+    def _run_parallel_searches(self,query: str, company_name: str| None , filing_type: str| None) -> tuple[list[RetrievalResult],list[RetrievalResult]]:
         with ThreadPoolExecutor(max_workers=2) as executor:
             vector_future = executor.submit(self.vector_search, query, company_name, filing_type)
             bm25_future = executor.submit(self.bm25_search, query, company_name, filing_type)
@@ -159,11 +159,24 @@ class FinancialRetriever:
         if not candidates:
             return []
         try:
-            scores = self.rerank.predict([(query, candidate.text) for candidate in candidates])
+            scores = self.reranker.predict([(query, candidate.text) for candidate in candidates])
         except Exception as exc:
             raise RuntimeError("Cross-encoder reranking failed.") from exc
         for candidate, score in zip(candidates, scores):
             candidate.rerank_score = float(score)
-        return sorted(candidate, key=lambda i : i.rerank_score, reverse=True)
+        return sorted(candidates, key=lambda item : item.rerank_score or 0.0 , reverse=True)
     
-
+def reciprocal_rank_fusion(
+        vector_results: list[RetrievalResult],
+        bm25_results: list[RetrievalResult],
+) -> list[RetrievalResult]:
+    fused: dict[str, RetrievalResult] = {}
+    for result in vector_results:
+        fused[result.chunk_id] = result
+        result.rrf_score += 1 / (RRF_K + (result.vector_rank or VECTOR_TOP_K))
+    for result in bm25_results:
+        existing = fused.get(result.chunk_id, result)
+        existing.bm25_rank = result.bm25_rank
+        existing.rrf_score += 1 / (RRF_K + (result.bm25_rank or BM25_TOP_K))
+        fused[result.chunk_id] = existing
+    return sorted(fused.values(), key=lambda item: item.rrf_score, reverse=True)
