@@ -38,7 +38,7 @@ class EmbeddingRecord:
 
 def load_chunks(path:Path)-> list[TextChunk]:
     try:
-        with path.open("wb") as file:
+        with path.open("rb") as file:
             chunks = pickle.load(file)
     except OSError as exc:
         raise OSError(f"Could not load chunks from {path}") from exc
@@ -62,7 +62,7 @@ def iter_batches(items: list[Any], batch_size: int) -> Iterable[list[Any]]:
 
 def embed_chunks(chunks: list[Any],model: Any, batch_size: int):
     try:
-        import tqdm
+        from tqdm import tqdm
     except ImportError as exc:
         raise ImportError("Install tqdm to show embedding progress.") from exc
     
@@ -135,8 +135,8 @@ def tokenize(text: str) -> list[str]:
 
 def build_bm25_index(chunks: list[TextChunk]) -> Any:
     try:
-        from rank_bm25 import BM250kapi
-        return BM250kapi([tokenize(chunk.text) for chunk in chunks])
+        from rank_bm25 import BM25Okapi
+        return BM25Okapi([tokenize(chunk.text) for chunk in chunks])
     except Exception as exc:
         raise RuntimeError("Could not build BM25 index.") from exc
 
