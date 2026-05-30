@@ -76,7 +76,7 @@ def chunk_parsed_document(path:Path, splitter: Any) -> list[TextChunk]:
 
     for section_text, metadata in iter_parsed_sections(parsed):
         for chunk_text in split_section(splitter,section_text):
-            chunk_index = len(chunk_text)
+            chunk_index = len(chunks)
             chunk_metadata = normalize_metadata(metadata)
             chunk_metadata.update({"document_id": document_id, "chunk_index": chunk_index})
             chunks.append(TextChunk(build_chunk_id(document_id, chunk_index),chunk_text,chunk_metadata))

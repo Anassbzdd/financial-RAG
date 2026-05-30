@@ -57,7 +57,10 @@ def answer_question(question:str, company:str, filing_type:str) -> tuple[str, st
     if not question.strip():
         return "Please enter a question.", ""
     filters = QueryFilters(normalize_filter(company), normalize_filter(filing_type))
-    response = get_pipeline().answer_question(question, filters)
+    try:
+        response = get_pipeline().answer_question(question, filters)
+    except Exception as exc:
+        return f"Query failed: {exc}", ""
     return response.answer, format_sources(response.sources)
 
 def build_interface() -> gr.Blocks:

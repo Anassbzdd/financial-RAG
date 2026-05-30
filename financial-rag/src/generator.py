@@ -52,7 +52,7 @@ def validate_config(config:GeneratorConfig) -> None:
         raise ValueError("max_tokens must be positive.")
 
 def create_groq_client(config: GeneratorConfig) -> Any:
-    validate_config(GeneratorConfig)
+    validate_config(config)
     try:
         from groq import Groq
         return Groq(api_key=config.groq_api_key)
@@ -83,7 +83,7 @@ def build_sources(chunks: list[RetrievalResult]):
 def build_context_block(sources: list[Source]) -> str:
     blocks = []
     for source in sources:
-        label = source_label(sources.source_id, sources.metadata)
+        label = source_label(source.source_id, source.metadata)
         blocks.append(f"{label}\n{source.text}")
     return "\n\n".join(blocks)
 
@@ -101,10 +101,31 @@ def source_to_dict(source: Source) -> dict[str, Any]:
     return asdict(source)
 
 class FinancialGenerator:
-    def __init__(self, config:GeneratorConfig) -> None:
+    def __init__(self, config: GeneratorConfig | None = None) -> None:
         self.config = config or build_config_from_environment()
         self.client = create_groq_client(self.config)
-        
+
+    def generate(self, question: str, chunks: list[RetrievalResult]) -> RagResponse:
+        if not chunks:
+            return RagResponse("I do not know from the provided filings.", [], 0)
+
+        sources = build_sources(chunks)
+        messages = build_messages(question, sources)
+        start_time = time.perf_counter()
+
+        try:
+            completion = self.client.chat.completions.create(
+                model=self.config.model_name,
+                messages=messages,
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens,
+            )
+        except Exception as exc:
+            raise RuntimeError("Groq generation failed.") from exc
+
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        return RagResponse(extract_answer(completion), sources, latency_ms)
+
     
 
 def build_messages(question: str, sources: list[Source]) -> list[dict[str,str]]:

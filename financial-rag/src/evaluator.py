@@ -88,11 +88,16 @@ def run_ragas(records: list[dict[str,Any]]) -> Any:
 
 def save_results(result: Any, records: list[dict[str,Any]], path:Path) -> None:
     ensure_reports_dir(path.parent)
-    payload = {"scores": dict(result), "examples": records}
+    payload = {"scores": result_to_dict(result), "examples": records}
     try:
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     except OSError as exc:
         raise OSError(f"Could not save RAGAS results to {path}") from exc
+
+def result_to_dict(result: Any) -> dict[str, Any]:
+    if hasattr(result, "to_pandas"):
+        return result.to_pandas().mean(numeric_only=True).to_dict()
+    return dict(result)
     
 def save_evaluation_set(path: Path = DEFAULT_REPORTS_DIR / "evaluation_set.json") -> None :
     ensure_reports_dir(path.parent)

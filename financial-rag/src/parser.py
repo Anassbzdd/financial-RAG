@@ -138,7 +138,10 @@ def extract_page_number(llama_metadata: dict[str, Any], fallback_index:int) -> i
     for key in ("page_number", "page_label", "page"):
         value = llama_metadata.get(key)
         if value is not None:
-            return int(value)
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                continue
         
     return fallback_index + DEFAULT_PAGE_NUMBER_START
 
@@ -183,7 +186,7 @@ def parsed_filing_to_dict(parsed_filing:ParsedFiling) -> dict[str, Any]:
     return {
         "document_id": parsed_filing.document_id,
         "source_pdf_path": str(parsed_filing.source_pdf_path),
-        "output_json_path": parsed_filing.output_json_path,
+        "output_json_path": str(parsed_filing.output_json_path),
         "metadata": parsed_filing.metadata,
         "sections": [asdict(section) for section in parsed_filing.sections],
         "parsed_at_utc": parsed_filing.parsed_at_utc,
