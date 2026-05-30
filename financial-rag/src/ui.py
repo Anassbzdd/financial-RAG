@@ -5,8 +5,7 @@ from typing import Any
 
 import gradio as gr
 
-from pipeline import QueryFilters, build_default_pipeline
-
+from pipeline import build_default_pipeline, QueryFilters
 
 COMPANY_OPTIONS = [
     "All companies",
@@ -29,52 +28,37 @@ CUSTOM_CSS = """
 #subtitle { text-align: center; color: #475569; margin-bottom: 24px; }
 """
 
-
 @lru_cache(maxsize=1)
-def get_pipeline() -> Any:
-    """Cache the RAG pipeline so the UI does not reload models per click."""
-
+def get_pipeline() -> Any :
     return build_default_pipeline()
 
-
 def normalize_filter(value: str) -> str | None:
-    """Convert UI placeholder choices into backend `None` filters."""
-
     return None if value.startswith("All") else value
 
-
 def format_sources(sources: list[Any]) -> str:
-    """Render source metadata as readable markdown for the UI panel."""
 
     if not sources:
         return "No sources returned."
     lines: list[str] = []
     for source in sources:
         metadata = source.metadata
-        label = build_source_label(source.source_id, metadata)
+        label = build_source_label(source.source_id,metadata)
         lines.append(f"**{label}**\n\n{source.text[:900]}...")
     return "\n\n---\n\n".join(lines)
 
-
 def build_source_label(source_id: int, metadata: dict[str, Any]) -> str:
-    """Create a compact source heading for Gradio."""
-
     company = metadata.get("company_name", "Unknown company")
     filing = metadata.get("filing_type", "Unknown filing")
     year = metadata.get("fiscal_year", "Unknown year")
     page = metadata.get("page_number", "Unknown page")
     return f"Source {source_id}: {company} | {filing} | {year} | page {page}"
 
-
-def answer_question(question: str, company: str, filing_type: str) -> tuple[str, str]:
-    """Run the RAG pipeline from Gradio inputs and return answer plus sources."""
-
+def answer_question(question:str, company:str, filing_type:str) -> tuple[str, str]:
     if not question.strip():
         return "Please enter a question.", ""
     filters = QueryFilters(normalize_filter(company), normalize_filter(filing_type))
     response = get_pipeline().answer_question(question, filters)
     return response.answer, format_sources(response.sources)
-
 
 def build_interface() -> gr.Blocks:
     """Build a clean Gradio interface for portfolio demos."""
@@ -95,3 +79,4 @@ def build_interface() -> gr.Blocks:
 
 if __name__ == "__main__":
     build_interface().launch()
+
