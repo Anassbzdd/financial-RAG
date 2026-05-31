@@ -8,7 +8,7 @@ from typing import Any
 
 from retriever import RetrievalResult
 
-GROQ_MODEL_NAME = "llama3-8b-8192"
+GROQ_MODEL_NAME = "llama-3.1-8b-instant"
 GENERATION_TEMPERATURE = 0.0
 MAX_GENERATION_TOKENS = 512
 
@@ -101,37 +101,34 @@ def source_to_dict(source: Source) -> dict[str, Any]:
     return asdict(source)
 
 class FinancialGenerator:
-    def __init__(self, config: GeneratorConfig | None = None) -> None:
+
+    def __init__(self, config:GeneratorConfig | None = None) -> None:
         self.config = config or build_config_from_environment()
         self.client = create_groq_client(self.config)
 
-    def generate(self, question: str, chunks: list[RetrievalResult]) -> RagResponse:
+    def generate(self, question:str, chunks: list[RetrievalResult]) -> RagResponse:
         if not chunks:
             return RagResponse("I do not know from the provided filings.", [], 0)
-
         sources = build_sources(chunks)
-        messages = build_messages(question, sources)
+        messages = build_messages(question,sources)
         start_time = time.perf_counter()
-
+        completion = self._call_groq(messages)
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        return RagResponse(extract_answer(completion), sources ,latency_ms)
+    
+    def _call_groq(self,messages):
         try:
-            completion = self.client.chat.completions.create(
-                model=self.config.model_name,
-                messages=messages,
-                temperature=self.config.temperature,
-                max_tokens=self.config.max_tokens,
+            return self.client.chat.completions.create(
+                model = self.config.model_name,
+                messages= messages,
+                temperature= self.config.temperature,
+                max_tokens = self.config.max_tokens,
             )
         except Exception as exc:
             raise RuntimeError("Groq generation failed.") from exc
-
-        latency_ms = int((time.perf_counter() - start_time) * 1000)
-        return RagResponse(extract_answer(completion), sources, latency_ms)
-
-    
 
 def build_messages(question: str, sources: list[Source]) -> list[dict[str,str]]:
     return [
         {"role": "system", "content": build_system_message()},
         {"role": "user", "content":build_user_message(question, sources)},
     ]
-
-        

@@ -15,6 +15,7 @@ DEFAULT_PARSED_DIR = PROJECT_ROOT / "data" / "parsed"
 MARKDOWN_RESULT_TYPE = "markdown"
 JSON_INDENT_SPACES = 2
 DEFAULT_PAGE_NUMBER_START = 1
+MAX_PARSE_ATTEMPTS = 2
 
 TABLE_PRESERVATION_INSTRUCTION = """
 Extract this SEC filing as clean markdown for a financial RAG system.
@@ -227,12 +228,11 @@ def parse_filings(
     
     active_config = config or build_config_from_environment()
     ensure_parsed_dir(active_config)
-    parser = create_llama_parser(active_config)
     parsed_filings: list[ParsedFiling] = []
 
     for filing in filings:
         try:
-            parsed_filings.append(parse_filing(parser, active_config, filing))
+            parsed_filings.append(parse_filing_with_retries(active_config, filing))
             LOGGER.info("Parsed %s.", filing.output_pdf_path.name)
         except Exception as exc:
             if not active_config.continue_on_error:
@@ -240,3 +240,22 @@ def parse_filings(
             LOGGER.exception("Skipping %s after parse failure: %s", filing.output_pdf_path, exc)
 
     return parsed_filings
+
+def parse_filing_with_retries(config: ParserConfig, filing: IngestedFiling) -> ParsedFiling:
+    last_error: Exception | None = None
+
+    for attempt in range(1, MAX_PARSE_ATTEMPTS + 1):
+        try:
+            parser = create_llama_parser(config)
+            return parse_filing(parser, config, filing)
+        except Exception as exc:
+            last_error = exc
+            LOGGER.warning(
+                "Parse attempt %s/%s failed for %s: %s",
+                attempt,
+                MAX_PARSE_ATTEMPTS,
+                filing.output_pdf_path.name,
+                exc,
+            )
+
+    raise RuntimeError(f"All parse attempts failed for {filing.output_pdf_path}") from last_error

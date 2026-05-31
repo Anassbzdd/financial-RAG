@@ -224,6 +224,10 @@ def sort_filing_directories_by_report_date(
     return [path for _, path in sorted(sortable_directories, reverse = True)]
     
 def find_primary_document(filing_directory: Path) -> Path:
+    extracted_document = filing_directory / "extracted-primary-document.html"
+    if extracted_document.exists():
+        return extracted_document
+
     preferred_names= (
         "primary-document.html",
         "primary-document.htm",
@@ -237,13 +241,38 @@ def find_primary_document(filing_directory: Path) -> Path:
     html_candidate = sorted(
         path
         for path in filing_directory.iterdir()
-        if path.is_file() and path.suffix.lower() in {".html",".htm",".txt"}
+        if path.is_file()
+        and path.name != "full-submission.txt"
+        and path.suffix.lower() in {".html",".htm",".txt"}
     )
 
-    if not html_candidate:
-        raise FileNotFoundError(f"No primary HTML/TXT filing document found in {filing_directory}")
+    if html_candidate:
+        return html_candidate[0]
     
-    return html_candidate[0]
+    return extract_primary_document_from_full_submission(filing_directory, extracted_document)
+
+def extract_primary_document_from_full_submission(filing_directory: Path, output_path: Path) -> Path:
+    full_submission_text = read_full_submission_text(filing_directory)
+    document_blocks = re.findall(r"<DOCUMENT>(.*?)</DOCUMENT>", full_submission_text, flags=re.DOTALL)
+
+    for block in document_blocks:
+        document_type = parse_document_tag(block, "TYPE")
+        if document_type in {ANNUAL_FILING_TYPE, QUARTERLY_FILING_TYPE}:
+            text = extract_document_text_block(block)
+            output_path.write_text(text, encoding="utf-8", errors="replace")
+            return output_path
+
+    raise FileNotFoundError(f"No primary 10-K/10-Q document found in {filing_directory}")
+
+def parse_document_tag(document_block: str, tag_name: str) -> str | None:
+    match = re.search(rf"<{tag_name}>\s*(?P<value>[^\n\r<]+)", document_block)
+    return match.group("value").strip() if match else None
+
+def extract_document_text_block(document_block: str) -> str:
+    match = re.search(r"<TEXT>\s*(?P<text>.*?)\s*</TEXT>", document_block, flags=re.DOTALL)
+    if not match:
+        raise ValueError("Primary SEC document block does not contain a TEXT section.")
+    return match.group("text")
 
 def convert_document_to_pdf(source_path: Path, output_pdf_path: Path):
     from weasyprint import HTML
