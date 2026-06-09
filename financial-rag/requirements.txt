@@ -1,0 +1,15 @@
+sec-edgar-downloader
+weasyprint
+python-dotenv
+llama-parse
+llama-index
+langchain-text-splitters
+sentence-transformers
+chromadb
+rank-bm25
+tqdm
+groq
+fastapi
+uvicorn
+gradio
+pydantic

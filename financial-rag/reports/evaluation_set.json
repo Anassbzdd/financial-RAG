@@ -1,0 +1,110 @@
+[
+  {
+    "question": "What were Apple's main net sales categories?",
+    "ground_truth": "Apple reports net sales by products and services, with products including iPhone, Mac, iPad, and Wearables, Home and Accessories.",
+    "company_name": "Apple",
+    "filing_type": "10-K"
+  },
+  {
+    "question": "What does Amazon report as its major business segments?",
+    "ground_truth": "Amazon reports segments including North America, International, and AWS.",
+    "company_name": "Amazon",
+    "filing_type": "10-K"
+  },
+  {
+    "question": "What are Alphabet's primary revenue sources?",
+    "ground_truth": "Alphabet primarily earns revenue from advertising, subscriptions, platforms, devices, and Google Cloud.",
+    "company_name": "Alphabet",
+    "filing_type": "10-K"
+  },
+  {
+    "question": "What are Berkshire Hathaway's major operating groups?",
+    "ground_truth": "Berkshire Hathaway reports diversified operations including insurance, rail, utilities and energy, manufacturing, service, and retailing.",
+    "company_name": "Berkshire Hathaway",
+    "filing_type": "10-K"
+  },
+  {
+    "question": "What does Johnson and Johnson report as major business segments?",
+    "ground_truth": "Johnson and Johnson reports business through healthcare-focused segments such as Innovative Medicine and MedTech.",
+    "company_name": "Johnson and Johnson",
+    "filing_type": "10-K"
+  },
+  {
+    "question": "What table shows Apple's net sales by category?",
+    "ground_truth": "Apple's filing includes a table presenting net sales by category and reportable segment.",
+    "company_name": "Apple",
+    "filing_type": "10-K"
+  },
+  {
+    "question": "What table shows Amazon AWS net sales?",
+    "ground_truth": "Amazon's filing includes segment tables that show AWS net sales and operating income.",
+    "company_name": "Amazon",
+    "filing_type": "10-K"
+  },
+  {
+    "question": "What table shows Alphabet revenues by type?",
+    "ground_truth": "Alphabet's filing includes revenue tables by Google advertising, subscriptions, platforms, devices, and cloud.",
+    "company_name": "Alphabet",
+    "filing_type": "10-K"
+  },
+  {
+    "question": "What does Berkshire's quarterly filing say about insurance underwriting?",
+    "ground_truth": "Berkshire's 10-Q discusses insurance underwriting results and investment income as part of insurance operations.",
+    "company_name": "Berkshire Hathaway",
+    "filing_type": "10-Q"
+  },
+  {
+    "question": "What does Johnson and Johnson's quarterly filing say about MedTech?",
+    "ground_truth": "Johnson and Johnson's 10-Q discusses MedTech sales and operating performance.",
+    "company_name": "Johnson and Johnson",
+    "filing_type": "10-Q"
+  },
+  {
+    "question": "Which company reports AWS as a segment?",
+    "ground_truth": "Amazon reports AWS as one of its operating segments.",
+    "company_name": null,
+    "filing_type": "10-K"
+  },
+  {
+    "question": "Which company reports iPhone net sales?",
+    "ground_truth": "Apple reports iPhone net sales.",
+    "company_name": null,
+    "filing_type": "10-K"
+  },
+  {
+    "question": "Which company reports Google Cloud revenue?",
+    "ground_truth": "Alphabet reports Google Cloud revenue.",
+    "company_name": null,
+    "filing_type": "10-K"
+  },
+  {
+    "question": "How do filings discuss foreign currency risk?",
+    "ground_truth": "The filings discuss foreign currency risk as exchange-rate movements that can affect revenue, costs, assets, liabilities, or cash flows.",
+    "company_name": null,
+    "filing_type": "10-K"
+  },
+  {
+    "question": "How do filings discuss supply chain risk?",
+    "ground_truth": "The filings discuss supply chain risk as disruptions or shortages that may affect production, costs, availability, or customer demand.",
+    "company_name": null,
+    "filing_type": "10-K"
+  },
+  {
+    "question": "How do filings discuss regulatory risk?",
+    "ground_truth": "The filings discuss regulatory risk as laws, investigations, compliance duties, or policy changes that can affect operations and financial results.",
+    "company_name": null,
+    "filing_type": "10-K"
+  },
+  {
+    "question": "How do filings discuss AI infrastructure investment?",
+    "ground_truth": "The filings discuss AI infrastructure investment through data centers, servers, chips, cloud infrastructure, or capital expenditures.",
+    "company_name": null,
+    "filing_type": "10-Q"
+  },
+  {
+    "question": "How do filings discuss liquidity?",
+    "ground_truth": "The filings discuss liquidity through cash, cash equivalents, marketable securities, operating cash flow, debt, and capital resources.",
+    "company_name": null,
+    "filing_type": "10-K"
+  }
+]

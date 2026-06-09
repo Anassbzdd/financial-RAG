@@ -1,6 +1,6 @@
 # Financial RAG
 
-Professional hybrid RAG system for SEC 10-K and 10-Q filings from major public companies.
+Professional hybrid RAG system for SEC 10-K and 10-Q filings from five major public companies.
 
 > Demo link: _Coming soon_
 
@@ -10,14 +10,14 @@ Professional hybrid RAG system for SEC 10-K and 10-Q filings from major public c
 flowchart LR
     A[SEC EDGAR filings] --> B[LlamaParse markdown extraction]
     B --> C[Recursive chunking]
-    C --> D[BAAI/bge-large-en-v1.5 embeddings]
+    C --> D[BAAI/bge-small-en-v1.5 embeddings]
     C --> E[BM25 keyword index]
     D --> F[ChromaDB vector store]
     F --> G[Hybrid retrieval]
     E --> G
     G --> H[RRF fusion]
     H --> I[Cross-encoder reranking]
-    I --> J[Groq llama3-8b-8192 generation]
+    I --> J[Groq llama-3.1-8b-instant generation]
     J --> K[FastAPI and Gradio]
 ```
 
@@ -30,12 +30,12 @@ Architecture diagram placeholder: add a polished image version here for the GitH
 | Ingestion | `sec-edgar-downloader`, `WeasyPrint` |
 | Parsing | `LlamaParse` with markdown table extraction |
 | Chunking | `RecursiveCharacterTextSplitter`, 512 chars, 50 overlap |
-| Embeddings | `sentence-transformers`, `BAAI/bge-large-en-v1.5` |
+| Embeddings | `sentence-transformers`, `BAAI/bge-small-en-v1.5` |
 | Vector DB | `ChromaDB` persistent collection `financial_reports` |
 | Keyword Search | `rank-bm25` / `BM25Okapi` |
 | Fusion | Reciprocal Rank Fusion, `k=60` |
 | Reranking | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
-| Generation | Groq API, `llama3-8b-8192`, temperature `0` |
+| Generation | Groq API, `llama-3.1-8b-instant`, temperature `0` |
 | API | FastAPI |
 | UI | Gradio |
 | Evaluation | RAGAS |
@@ -119,8 +119,8 @@ Example request:
 
 ```json
 {
-  "question": "What drove Nvidia's data center revenue?",
-  "company_name": "Nvidia",
+  "question": "What are Amazon's major business segments?",
+  "company_name": "Amazon",
   "filing_type": "10-K"
 }
 ```
@@ -160,4 +160,4 @@ This project is designed to demonstrate production ML engineering judgment:
 - RRF and cross-encoder reranking for stronger retrieval quality
 - deterministic generation with grounded source citations
 - FastAPI and Gradio surfaces for recruiter-friendly demos
-- RAGAS evaluation with a curated 30-question test set
+- RAGAS evaluation with a curated test set matched to the deployed five-company corpus

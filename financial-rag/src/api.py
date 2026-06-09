@@ -32,6 +32,10 @@ class HealthResponse(BaseModel):
 def get_pipeline() -> Any:
     return build_default_pipeline()
 
+@app.on_event("startup")
+def warm_up_pipeline() -> None:
+    get_pipeline()
+
 @app.get("/health", response_model= HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok")

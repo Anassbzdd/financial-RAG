@@ -14,7 +14,7 @@ DEFAULT_EMBEDDINGS_PATH = PROJECT_ROOT / "data" / "embeddings.pkl"
 DEFAULT_BM25_PATH = PROJECT_ROOT / "data" / "bm25_index.pkl"
 DEFAULT_CHROMA_DIR = PROJECT_ROOT / "data" / "chroma-db"
 COLLECTION_NAME = "financial_reports"
-EMBEDDING_MODEL_NAME = "BAAI/bge-large-en-v1.5"
+EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 EMBEDDING_BATCH_SIZE = 32
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9]+")
 

@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import logging
 import os 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Any
+import re
 
-from ingestion import IngestedFiling
+from ingestion import DEFAULT_COMPANIES, DEFAULT_RAW_DIR, FilingMetadata, IngestedFiling, configure_logging
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PARSED_DIR = PROJECT_ROOT / "data" / "parsed"
@@ -25,6 +26,11 @@ Preserve the document order so page-level citations remain meaningful.
 """.strip()
 
 LOGGER = logging.getLogger(__name__)
+
+COMPANY_BY_SLUG = {
+    company.name.lower().replace(" ", "_").replace("&", "and"): company
+    for company in DEFAULT_COMPANIES
+}
 
 @dataclass(frozen=True)
 class ParserConfig:
@@ -232,6 +238,10 @@ def parse_filings(
 
     for filing in filings:
         try:
+            output_json_path = build_output_json_path(active_config, filing)
+            if output_json_path.exists():
+                LOGGER.info("Skipping already parsed filing %s.", output_json_path.name)
+                continue
             parsed_filings.append(parse_filing_with_retries(active_config, filing))
             LOGGER.info("Parsed %s.", filing.output_pdf_path.name)
         except Exception as exc:
@@ -259,3 +269,62 @@ def parse_filing_with_retries(config: ParserConfig, filing: IngestedFiling) -> P
             )
 
     raise RuntimeError(f"All parse attempts failed for {filing.output_pdf_path}") from last_error
+
+def split_raw_pdf_stem(pdf_path: Path) -> tuple[str, str, int, int | None]:
+    """Read metadata from the clean PDF filename because CLI parsing starts from saved files."""
+
+    pattern = re.compile(r"^(?P<company>.+)_(?P<filing_type>10-[KQ])_(?P<year>\d{4})(?:_q(?P<quarter>\d+))?$")
+    match = pattern.match(pdf_path.stem)
+    if match is None:
+        raise ValueError(f"Unexpected raw PDF filename: {pdf_path.name}")
+    company_slug = match.group("company")
+    filing_type = match.group("filing_type")
+    fiscal_year = int(match.group("year"))
+    quarter_text = match.group("quarter")
+    quarter = int(quarter_text) if quarter_text else None
+    return company_slug, filing_type, fiscal_year, quarter
+
+def build_ingested_filing_from_pdf(pdf_path: Path) -> IngestedFiling:
+    """Recreate the ingestion object so parser.py can resume from data/raw PDFs."""
+
+    company_slug, filing_type, fiscal_year, quarter = split_raw_pdf_stem(pdf_path)
+    company = COMPANY_BY_SLUG.get(company_slug)
+    if company is None:
+        raise ValueError(f"Unknown company slug in filename: {company_slug}")
+    metadata = FilingMetadata(
+        company_name=company.name,
+        ticker=company.ticker,
+        filing_type=filing_type,
+        fiscal_year=fiscal_year,
+        quarter=quarter,
+        filing_date=None,
+        report_period=None,
+        accession_number=pdf_path.stem,
+    )
+    return IngestedFiling(pdf_path.parent, pdf_path, pdf_path, metadata)
+
+def load_ingested_filings_from_raw(raw_dir: Path = DEFAULT_RAW_DIR) -> list[IngestedFiling]:
+    """Load every raw PDF so stopped ingestion can continue into parsing later."""
+
+    pdf_paths = sorted(raw_dir.glob("*.pdf"))
+    if not pdf_paths:
+        raise FileNotFoundError(f"No PDFs found in {raw_dir}")
+    filings: list[IngestedFiling] = []
+    for pdf_path in pdf_paths:
+        try:
+            filings.append(build_ingested_filing_from_pdf(pdf_path))
+        except ValueError as exc:
+            LOGGER.info("Skipping unsupported raw PDF %s: %s", pdf_path.name, exc)
+    return filings
+
+def main() -> None:
+    """Parse all PDFs in data/raw when this file is run from the terminal."""
+
+    configure_logging()
+    config = replace(build_config_from_environment(), continue_on_error=True)
+    filings = load_ingested_filings_from_raw()
+    parsed_filings = parse_filings(filings, config)
+    LOGGER.info("Parsed %s filing(s).", len(parsed_filings))
+
+if __name__ == "__main__":
+    main()

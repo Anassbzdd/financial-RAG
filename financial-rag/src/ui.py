@@ -10,14 +10,9 @@ from pipeline import build_default_pipeline, QueryFilters
 COMPANY_OPTIONS = [
     "All companies",
     "Apple",
-    "Microsoft",
-    "Nvidia",
     "Amazon",
     "Alphabet",
-    "Meta",
-    "Tesla",
     "Berkshire Hathaway",
-    "JPMorgan Chase",
     "Johnson and Johnson",
 ]
 FILING_OPTIONS = ["All filings", "10-K", "10-Q"]
@@ -72,7 +67,7 @@ def build_interface() -> gr.Blocks:
         with gr.Row():
             company = gr.Dropdown(COMPANY_OPTIONS, value="All companies", label="Company")
             filing = gr.Dropdown(FILING_OPTIONS, value="All filings", label="Filing type")
-        question = gr.Textbox(label="Question", lines=3, placeholder="What drove Nvidia's data center revenue?")
+        question = gr.Textbox(label="Question", lines=3, placeholder="What are Amazon's major business segments?")
         submit = gr.Button("Ask", variant="primary")
         answer = gr.Textbox(label="Answer", lines=8)
         sources = gr.Markdown(label="Sources")
@@ -81,5 +76,6 @@ def build_interface() -> gr.Blocks:
 
 
 if __name__ == "__main__":
+    get_pipeline()
     build_interface().launch()
 

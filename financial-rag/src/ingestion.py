@@ -63,14 +63,9 @@ class IngestionConfig:
 
 DEFAULT_COMPANIES: tuple[Company, ...] = (
     Company("Apple", "AAPL", "0000320193"),
-    Company("Microsoft", "MSFT", "0000789019"),
-    Company("Nvidia", "NVDA", "0001045810"),
     Company("Amazon", "AMZN", "0001018724"),
     Company("Alphabet", "GOOGL", "0001652044"),
-    Company("Meta", "META", "0001326801"),
-    Company("Tesla", "TSLA", "0001318605"),
     Company("Berkshire Hathaway", "BRK-B", "0001067983"),
-    Company("JPMorgan Chase", "JPM", "0000019617"),
     Company("Johnson and Johnson", "JNJ", "0000200406"),
 )
 

@@ -1,1 +1,11 @@
 .env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+data/
+reports/ragas_results.json
+weasy_test.pdf
+
+*.log
